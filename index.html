@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Douvaine 3D – bâtiments BD TOPO</title>
+  </head>
+  <body>
+    <div id="map"></div>
+    <aside id="panel">
+      <h1>Douvaine en 3D</h1>
+      <p class="subtitle"><span id="count">…</span> bâtiments, hauteurs issues de la BD TOPO de l'IGN</p>
+
+      <section>
+        <h2>Points de vue</h2>
+        <div class="grid" id="views">
+          <button data-view="oiseau">Vue d'oiseau</button>
+          <button data-view="nord">Depuis le Nord</button>
+          <button data-view="sud">Depuis le Sud</button>
+          <button data-view="est">Depuis l'Est</button>
+          <button data-view="ouest">Depuis l'Ouest</button>
+          <button data-view="rasante">Vue rasante</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fond de carte</h2>
+        <div class="toggle" data-group="basemap">
+          <button data-value="plan" class="active">Plan IGN</button>
+          <button data-value="ortho">Orthophoto</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Hauteur</h2>
+        <div class="toggle" data-group="height">
+          <button data-value="h_gouttiere" class="active">Gouttière</button>
+          <button data-value="h_faitage">Toit (faîtage)</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Couleurs</h2>
+        <div class="toggle" data-group="color">
+          <button data-value="height" class="active">Par hauteur</button>
+          <button data-value="usage">Par usage</button>
+        </div>
+        <div id="legend"></div>
+      </section>
+
+      <p class="credits">Données © IGN – BD TOPO®, Plan IGN, BD ORTHO®</p>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
