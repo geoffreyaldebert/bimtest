@@ -193,8 +193,26 @@ const views: Record<string, () => void> = {
 };
 
 document.querySelectorAll<HTMLButtonElement>('#views button').forEach((btn) => {
-  btn.addEventListener('click', () => views[btn.dataset.view!]?.());
+  btn.addEventListener('click', () => {
+    views[btn.dataset.view!]?.();
+    if (isMobile.matches) setPanelCollapsed(true);
+  });
 });
+
+// --- Menu rétractable ---
+
+const panel = document.getElementById('panel')!;
+const panelToggle = document.getElementById('panel-toggle')!;
+const isMobile = window.matchMedia('(max-width: 640px)');
+
+function setPanelCollapsed(collapsed: boolean) {
+  panel.classList.toggle('collapsed', collapsed);
+  panelToggle.setAttribute('aria-expanded', String(!collapsed));
+  panelToggle.title = collapsed ? 'Déplier le menu' : 'Replier le menu';
+}
+
+panelToggle.addEventListener('click', () => setPanelCollapsed(!panel.classList.contains('collapsed')));
+setPanelCollapsed(isMobile.matches);
 
 // --- Toggles ---
 

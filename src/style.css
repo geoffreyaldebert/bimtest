@@ -26,9 +26,56 @@ body {
   font-size: 13px;
 }
 
+#panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 #panel h1 {
   margin: 0;
   font-size: 18px;
+}
+
+#panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+#panel-toggle .chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(2px) rotate(-135deg);
+  transition: transform 0.2s;
+}
+
+#panel.collapsed #panel-toggle .chevron {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+#panel.collapsed {
+  width: auto;
+  padding: 8px 10px 8px 14px;
+}
+
+#panel.collapsed #panel-body {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  #panel {
+    top: 8px;
+    left: 8px;
+    width: calc(100% - 64px);
+    max-height: calc(100% - 60px);
+  }
 }
 
 #panel h2 {
