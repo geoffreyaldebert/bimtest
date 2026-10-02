@@ -239,7 +239,9 @@ def group_index(cls: np.ndarray) -> np.ndarray:
     return g
 
 
-def decimate(groups: np.ndarray, target: int, rng: np.random.Generator) -> np.ndarray:
+def decimate(groups: np.ndarray, target: int | None, rng: np.random.Generator) -> np.ndarray:
+    if target is None or target >= len(groups):
+        return np.ones(groups.shape, dtype=bool)
     is_ground = groups == 0
     n_ground, n_other = int(is_ground.sum()), int((~is_ground).sum())
     p_other = min(1.0, target / (n_other + GROUND_KEEP_RATIO * n_ground))
@@ -247,8 +249,8 @@ def decimate(groups: np.ndarray, target: int, rng: np.random.Generator) -> np.nd
     return rng.random(groups.shape) < p
 
 
-def build_points(zone, zone_l93, center_lonlat, target: int) -> float:
-    lon_c, lat_c = center_lonlat
+def build_points(zone, zone_l93, center_lonlat, densities: dict[str, int | None]) -> float:
+    """Écrit un jeu `<nom>.bin` / `<nom>.json` par densité ; renvoie l'altitude de référence."""
     bbox_lonlat = zone.bounds
     tiles = lidar_tiles(bbox_lonlat)
     log(f"{len(tiles)} dalles LiDAR HD couvrent la zone")
@@ -265,11 +267,29 @@ def build_points(zone, zone_l93, center_lonlat, target: int) -> float:
     zref = float(math.floor(np.percentile(pts["z"][groups == 0], 1)))
     log(f"{len(groups):,} points dans la zone, altitude de référence {zref} m")
 
-    keep = decimate(groups, target, np.random.default_rng(42))
-    x, y, z, cls, groups = pts["x"][keep], pts["y"][keep], pts["z"][keep], pts["cls"][keep], groups[keep]
+    source = {
+        "dalles": [t["url_npl"] for t in tiles],
+        "acquisition": f"{tiles[0]['date_debut_acquisition'][:10]} / {tiles[0]['date_fin_acquisition'][:10]}",
+        "classement": tiles[0]["procede_classement"],
+    }
+    for name, target in densities.items():
+        keep = decimate(groups, target, np.random.default_rng(42))
+        write_points(
+            name,
+            {k: v[keep] for k, v in pts.items()},
+            groups[keep],
+            center_lonlat,
+            zref,
+            source,
+        )
+    return zref
+
+
+def write_points(name: str, pts: dict[str, np.ndarray], groups: np.ndarray, center_lonlat, zref: float, source) -> None:
+    lon_c, lat_c = center_lonlat
     order = np.argsort(groups, kind="stable")
-    x, y, z, cls, groups = x[order], y[order], z[order], cls[order], groups[order]
-    log(f"{len(x):,} points conservés après décimation")
+    x, y, z, cls, groups = pts["x"][order], pts["y"][order], pts["z"][order], pts["cls"][order], groups[order]
+    log(f"{name} : {len(x):,} points")
 
     to_wgs = Transformer.from_crs(2154, 4326, always_xy=True)
     lon, lat = to_wgs.transform(x, y)
@@ -288,7 +308,7 @@ def build_points(zone, zone_l93, center_lonlat, target: int) -> float:
     quant = np.round((xyz - offset) / scale).astype("<u2")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    with (OUT / "points.bin").open("wb") as f:
+    with (OUT / f"{name}.bin").open("wb") as f:
         f.write(quant.tobytes())
         f.write(rgb.astype(np.uint8).tobytes())
         f.write(cls.astype(np.uint8).tobytes())
@@ -306,16 +326,11 @@ def build_points(zone, zone_l93, center_lonlat, target: int) -> float:
             {"id": g["id"], "name": g["name"], "start": int(s), "count": int(c)}
             for g, s, c in zip(GROUPS, starts, counts)
         ],
-        "source": {
-            "dalles": [t["url_npl"] for t in tiles],
-            "acquisition": f"{tiles[0]['date_debut_acquisition'][:10]} / {tiles[0]['date_fin_acquisition'][:10]}",
-            "classement": tiles[0]["procede_classement"],
-        },
+        "source": source,
     }
-    (OUT / "points.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
-    size = (OUT / "points.bin").stat().st_size / 1e6
-    log(f"points.bin : {size:.1f} Mo")
-    return zref
+    (OUT / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+    size = (OUT / f"{name}.bin").stat().st_size / 1e6
+    log(f"{name}.bin : {size:.1f} Mo")
 
 
 def ortho_colors(lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
@@ -393,7 +408,9 @@ def build_mns(zone, zref: float) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--points", type=int, default=3_000_000, help="nombre de points visé")
+    parser.add_argument(
+        "--points", type=int, default=3_000_000, help="nombre de points visé pour la densité standard (points.bin)"
+    )
     args = parser.parse_args()
 
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -403,7 +420,8 @@ def main() -> None:
     w, s, e, n = zone.bounds
     center = ((w + e) / 2, (s + n) / 2)
 
-    zref = build_points(zone, zone_l93, center, args.points)
+    # points-hd : tous les points de la zone, chargés à la demande par la page.
+    zref = build_points(zone, zone_l93, center, {"points": args.points, "points-hd": None})
     build_mns(zone, zref)
 
 

@@ -27,7 +27,52 @@ Fonctionnalités de la version LiDAR :
   - par hauteur ;
 - affichage ou masquage par groupe de classes : sol, végétation, bâti, autres ;
 - taille des points réglable, en mètres ;
+- densité **standard**, avec 3 millions de points (30 Mo), ou **complète**, avec les 5,8 millions de points de la zone (58 Mo). La densité complète n'est chargée que si on la choisit ;
 - mêmes points de vue, fonds de carte et menu rétractable que la version BD TOPO.
+
+## Configuration par l'URL
+
+Chaque réglage de l'interface est recopié dans l'URL au fil des clics, ainsi que la position de la caméra. Une URL copiée rouvre donc la page exactement dans la même configuration. On peut aussi écrire ces URL à la main. Un paramètre absent ou invalide prend sa valeur par défaut.
+
+Le lien qui mène d'une version à l'autre reprend la caméra, le fond de carte et l'état du menu.
+
+Paramètres communs aux deux pages :
+
+| Paramètre | Valeurs | Défaut |
+| --- | --- | --- |
+| `panel` | `true` (menu ouvert), `false` (menu replié) | ouvert, sauf sur mobile |
+| `basemap` | `plan`, `ortho` | `plan` (BD TOPO), `ortho` (LiDAR) |
+| `lon`, `lat` | centre de la vue, en degrés WGS84 | centre de la zone |
+| `zoom` | niveau de zoom | 16 (BD TOPO), 16,6 (LiDAR) |
+| `pitch` | inclinaison, de 0 à 85° | 60 (BD TOPO), 65 (LiDAR) |
+| `bearing` | orientation, de -180 à 180° | -20 |
+
+Version BD TOPO ([index.html](index.html)) :
+
+| Paramètre | Valeurs | Défaut |
+| --- | --- | --- |
+| `height` | `h_gouttiere`, `h_faitage` | `h_gouttiere` |
+| `color` | `height`, `usage` | `height` |
+
+Version LiDAR ([lidar.html](lidar.html)) :
+
+| Paramètre | Valeurs | Défaut |
+| --- | --- | --- |
+| `render` | `points`, `mns` | `points` |
+| `density` | `standard`, `hd` | `standard` |
+| `color` | `reel`, `classe`, `hauteur` | `reel` |
+| `classes` | liste séparée par des virgules parmi `sol`, `vegetation`, `bati`, `autres` | toutes |
+| `size` | taille des points, de 0,1 à 1,2 m | `0.45` |
+| `hillshade` | `true`, `false` | `false` |
+
+Exemples :
+
+- Végétation et bâti seulement, en couleurs par classe et en densité complète, menu replié :
+  `lidar.html?density=hd&color=classe&classes=vegetation,bati&size=0.3&panel=false&lon=6.3075&lat=46.3005&zoom=17.8&pitch=70&bearing=40`
+- Surface MNS ombrée sur le Plan IGN :
+  `lidar.html?render=mns&hillshade=true&basemap=plan&lon=6.3075&lat=46.3005&zoom=17.5&pitch=70&bearing=-30`
+- Bâtiments BD TOPO à la hauteur du faîtage, colorés par usage, sur l'orthophoto :
+  `?basemap=ortho&height=h_faitage&color=usage&panel=false&zoom=17.5&pitch=70&bearing=120`
 
 ## Lancer le projet
 
@@ -42,7 +87,7 @@ npm run fetch-data   # régénère les données bâtiments BD TOPO (voir plus ba
 # régénère les données LiDAR (voir plus bas)
 python3 -m venv .venv
 .venv/bin/pip install -r scripts/requirements.txt
-.venv/bin/python scripts/fetch_lidar.py            # option : --points 1000000
+.venv/bin/python scripts/fetch_lidar.py            # option : --points 1000000 (densité standard)
 ```
 
 ## Déploiement
@@ -129,7 +174,9 @@ Les fichiers sont mis en cache dans `.cache/lidar/`, qui n'est pas versionné.
 1. **Découpage** sur le polygone de la zone, reprojeté en Lambert-93 : 5 767 279 points retenus sur les 30,3 millions des deux dalles.
 2. **Classes retirées** : 7 (bruit), 65 (artefacts) et 66 (points virtuels).
 3. **Altitude de référence** : 430 m IGN69, soit le 1er centile de l'altitude des points de sol, arrondi à l'unité inférieure. Toutes les hauteurs sont données au-dessus de cette altitude.
-4. **Décimation aléatoire** à environ 3 millions de points (3 001 209). Les points de sol, très nombreux et peu informatifs, sont gardés deux fois moins que les autres.
+4. **Deux densités** :
+   - **standard** : décimation aléatoire à environ 3 millions de points (3 001 209). Les points de sol, très nombreux et peu informatifs, sont gardés deux fois moins que les autres ;
+   - **complète** : les 5 767 279 points de la zone, sans décimation.
 5. **Reprojection en WGS84**, puis conversion en décalages en mètres autour du centre de la zone : c'est le format `METER_OFFSETS` attendu par deck.gl.
 6. **Colorisation** : les dalles LiDAR HD ne contiennent pas de couleurs. Chaque point prend donc la couleur du pixel de l'orthophoto IGN à sa position, récupérée par le WMS-R en EPSG:3857 au niveau de zoom 19 (environ 0,2 m par pixel), en 30 blocs de 1024 × 1024 px :
 
@@ -138,12 +185,12 @@ Les fichiers sont mis en cache dans `.cache/lidar/`, qui n'est pas versionné.
      &STYLES=&FORMAT=image/jpeg&CRS=EPSG:3857&BBOX=<xmin,ymin,xmax,ymax>&WIDTH=1024&HEIGHT=1024
    ```
 
-7. **Écriture** de [public/data/lidar/points.bin](public/data/lidar/points.bin), qui fait 30 Mo, soit 10 octets par point :
+7. **Écriture** de [public/data/lidar/points.bin](public/data/lidar/points.bin) (densité standard, 30 Mo) et de `public/data/lidar/points-hd.bin` (densité complète, 58 Mo), à 10 octets par point :
    - les positions, quantifiées sur 3 × `uint16` ;
    - la couleur, sur 3 × `uint8` ;
    - la classe, sur 1 × `uint8`.
 
-   Les points sont triés par groupe : sol et eau, végétation, bâti, autres. Le fichier [points.json](public/data/lidar/points.json) décrit l'origine, l'échelle de quantification et la position de chaque groupe dans le fichier.
+   Les points sont triés par groupe : sol et eau, végétation, bâti, autres. Chaque `.bin` a son `.json`, par exemple [points.json](public/data/lidar/points.json), qui décrit l'origine, l'échelle de quantification et la position de chaque groupe dans le fichier.
 
 **4. MNS LiDAR HD**, demandé au WMS-R en GeoTIFF float32 et directement en EPSG:3857, par blocs de 1024 × 1024 px alignés sur la grille des tuiles web (16 blocs) :
 

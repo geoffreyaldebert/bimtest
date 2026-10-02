@@ -4,12 +4,27 @@ import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import { PointCloudLayer } from '@deck.gl/layers';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Feature, Polygon } from 'geojson';
-import { dataUrl, ringBounds, setupPanel, setupToggles, wmts } from './common';
+import {
+  dataUrl,
+  ringBounds,
+  setUrlParams,
+  setupPanel,
+  setupToggles,
+  setupVersionLink,
+  syncCameraToUrl,
+  urlBoolean,
+  urlCamera,
+  urlChoice,
+  urlList,
+  urlNumber,
+  wmts,
+} from './common';
 import './style.css';
 
 type RenderMode = 'points' | 'mns';
 type ColorMode = 'reel' | 'classe' | 'hauteur';
 type Basemap = 'plan' | 'ortho';
+type Density = 'standard' | 'hd';
 
 interface PointsMeta {
   count: number;
@@ -86,26 +101,66 @@ async function fetchWithProgress(url: string, expected: number): Promise<ArrayBu
   return out.buffer.slice(0, received);
 }
 
-const [zone, meta, mnsMeta] = await Promise.all([
+interface Dataset {
+  meta: PointsMeta;
+  n: number;
+  positions: Float32Array;
+  classes: Uint8Array;
+  colorBuffers: Partial<Record<ColorMode, Uint8Array>>;
+}
+
+async function loadDataset(density: Density): Promise<Dataset> {
+  loading.classList.remove('done');
+  progressBar.style.width = '0';
+  progressLabel.textContent = '0 %';
+  const file = density === 'hd' ? 'points-hd' : 'points';
+  const meta = (await fetch(dataUrl(`lidar/${file}.json`)).then((r) => r.json())) as PointsMeta;
+  const buffer = await fetchWithProgress(dataUrl(`lidar/${file}.bin`), meta.count * 10);
+
+  const n = meta.count;
+  const quantized = new Uint16Array(buffer, 0, n * 3);
+  const positions = new Float32Array(n * 3);
+  for (let i = 0; i < n * 3; i += 3) {
+    positions[i] = meta.offset[0] + quantized[i] * meta.scale[0];
+    positions[i + 1] = meta.offset[1] + quantized[i + 1] * meta.scale[1];
+    positions[i + 2] = meta.offset[2] + quantized[i + 2] * meta.scale[2];
+  }
+  loading.classList.add('done');
+  return {
+    meta,
+    n,
+    positions,
+    classes: new Uint8Array(buffer, n * 9, n),
+    colorBuffers: { reel: new Uint8Array(buffer, n * 6, n * 3) },
+  };
+}
+
+const [zone, mnsMeta] = await Promise.all([
   fetch(dataUrl('zone.geojson')).then((r) => r.json() as Promise<Feature<Polygon>>),
-  fetch(dataUrl('lidar/points.json')).then((r) => r.json() as Promise<PointsMeta>),
   fetch(dataUrl('lidar/mns.json')).then((r) => r.json() as Promise<MnsMeta>),
 ]);
 
-const buffer = await fetchWithProgress(dataUrl('lidar/points.bin'), meta.count * 10);
-loading.classList.add('done');
+const GROUP_IDS = ['sol', 'vegetation', 'bati', 'autres'];
 
-const n = meta.count;
-const quantized = new Uint16Array(buffer, 0, n * 3);
-const rgb = new Uint8Array(buffer, n * 6, n * 3);
-const classes = new Uint8Array(buffer, n * 9, n);
+const state: {
+  render: RenderMode;
+  density: Density;
+  color: ColorMode;
+  basemap: Basemap;
+  pointSize: number;
+  hillshade: boolean;
+  visibleGroups: Set<string>;
+} = {
+  render: urlChoice('render', ['points', 'mns'] as const, 'points'),
+  density: urlChoice('density', ['standard', 'hd'] as const, 'standard'),
+  color: urlChoice('color', ['reel', 'classe', 'hauteur'] as const, 'reel'),
+  basemap: urlChoice('basemap', ['plan', 'ortho'] as const, 'ortho'),
+  pointSize: urlNumber('size', 0.45, 0.1, 1.2),
+  hillshade: urlBoolean('hillshade', false),
+  visibleGroups: urlList('classes', GROUP_IDS, GROUP_IDS),
+};
 
-const positions = new Float32Array(n * 3);
-for (let i = 0; i < n * 3; i += 3) {
-  positions[i] = meta.offset[0] + quantized[i] * meta.scale[0];
-  positions[i + 1] = meta.offset[1] + quantized[i + 1] * meta.scale[1];
-  positions[i + 2] = meta.offset[2] + quantized[i + 2] * meta.scale[2];
-}
+let data = await loadDataset(state.density);
 
 function heightColor(h: number): [number, number, number] {
   if (h <= HEIGHT_RAMP[0][0]) return HEIGHT_RAMP[0][1];
@@ -120,9 +175,8 @@ function heightColor(h: number): [number, number, number] {
   return HEIGHT_RAMP[HEIGHT_RAMP.length - 1][1];
 }
 
-const colorBuffers: Partial<Record<ColorMode, Uint8Array>> = { reel: rgb };
-
 function colorsFor(mode: ColorMode): Uint8Array {
+  const { n, positions, classes, colorBuffers } = data;
   const cached = colorBuffers[mode];
   if (cached) return cached;
   const out = new Uint8Array(n * 3);
@@ -147,26 +201,11 @@ const zoneBounds: LngLatBoundsLike = [
 const center: [number, number] = [(minX + maxX) / 2, (minY + maxY) / 2];
 const mnsTiles = `${new URL(dataUrl('lidar/mns/'), location.href).href}{z}/{x}/{y}.png`;
 
-const state: {
-  render: RenderMode;
-  color: ColorMode;
-  basemap: Basemap;
-  pointSize: number;
-  visibleGroups: Set<string>;
-} = {
-  render: 'points',
-  color: 'reel',
-  basemap: 'ortho',
-  pointSize: 0.45,
-  visibleGroups: new Set(meta.groups.map((g) => g.id)),
-};
+const visibleIf = (visible: boolean): 'visible' | 'none' => (visible ? 'visible' : 'none');
 
 const map = new maplibregl.Map({
   container: 'map',
-  center,
-  zoom: 16.6,
-  pitch: 65,
-  bearing: -20,
+  ...urlCamera({ center, zoom: 16.6, pitch: 65, bearing: -20 }),
   maxPitch: 85,
   minZoom: 14,
   canvasContextAttributes: { antialias: true },
@@ -200,13 +239,13 @@ const map = new maplibregl.Map({
       zone: { type: 'geojson', data: zone },
     },
     layers: [
-      { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: 'none' } },
-      { id: 'ortho', type: 'raster', source: 'ortho' },
+      { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: visibleIf(state.basemap === 'plan') } },
+      { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: visibleIf(state.basemap === 'ortho') } },
       {
         id: 'hillshade',
         type: 'hillshade',
         source: 'mns',
-        layout: { visibility: 'none' },
+        layout: { visibility: visibleIf(state.render === 'mns' && state.hillshade) },
         paint: { 'hillshade-exaggeration': 0.6, 'hillshade-shadow-color': '#1d2433' },
       },
       {
@@ -221,30 +260,46 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+syncCameraToUrl(map);
 
 const overlay = new MapboxOverlay({ interleaved: true, layers: [] });
 map.addControl(overlay);
 
+// deck.gl ne réimporte les attributs que si l'objet `data` change : on le garde par jeu et par couleur.
+const layerData = new WeakMap<Dataset, Map<string, object>>();
+
+function groupData(g: PointsMeta['groups'][number]) {
+  let byKey = layerData.get(data);
+  if (!byKey) layerData.set(data, (byKey = new Map()));
+  const key = `${g.id}-${state.color}`;
+  let entry = byKey.get(key);
+  if (!entry) {
+    const colors = colorsFor(state.color);
+    entry = {
+      length: g.count,
+      attributes: {
+        getPosition: { value: data.positions.subarray(g.start * 3, (g.start + g.count) * 3), size: 3 },
+        getColor: { value: colors.subarray(g.start * 3, (g.start + g.count) * 3), size: 3, normalized: true },
+      },
+    };
+    byKey.set(key, entry);
+  }
+  return entry;
+}
+
 function pointLayers() {
-  const colors = colorsFor(state.color);
+  const { meta } = data;
   return meta.groups.map(
     (g) =>
       new PointCloudLayer({
         id: `lidar-${g.id}`,
-        data: {
-          length: g.count,
-          attributes: {
-            getPosition: { value: positions.subarray(g.start * 3, (g.start + g.count) * 3), size: 3 },
-            getColor: { value: colors.subarray(g.start * 3, (g.start + g.count) * 3), size: 3, normalized: true },
-          },
-        },
+        data: groupData(g) as never,
         visible: state.render === 'points' && state.visibleGroups.has(g.id),
         coordinateSystem: COORDINATE_SYSTEM.METER_OFFSETS,
         coordinateOrigin: [meta.origin[0], meta.origin[1], 0],
         pointSize: state.pointSize,
         sizeUnits: 'meters',
         material: false,
-        updateTriggers: { getColor: state.color },
       }),
   );
 }
@@ -253,24 +308,32 @@ function refreshPoints() {
   overlay.setProps({ layers: pointLayers() });
 }
 
+function showModeSections() {
+  document.querySelectorAll<HTMLElement>('section[data-mode]').forEach((s) => {
+    s.hidden = s.dataset.mode !== state.render;
+  });
+}
+
+function updateHillshade() {
+  map.setLayoutProperty('hillshade', 'visibility', visibleIf(state.render === 'mns' && state.hillshade));
+}
+
 function setRender(mode: RenderMode) {
   state.render = mode;
   map.setTerrain(mode === 'mns' ? { source: 'mns', exaggeration: 1 } : null);
-  const hillshade = (document.getElementById('hillshade') as HTMLInputElement).checked;
-  map.setLayoutProperty('hillshade', 'visibility', mode === 'mns' && hillshade ? 'visible' : 'none');
-  document.querySelectorAll<HTMLElement>('section[data-mode]').forEach((s) => {
-    s.hidden = s.dataset.mode !== mode;
-  });
+  updateHillshade();
+  showModeSections();
   refreshPoints();
 }
 
 function setBasemap(value: Basemap) {
   state.basemap = value;
-  map.setLayoutProperty('plan', 'visibility', value === 'plan' ? 'visible' : 'none');
-  map.setLayoutProperty('ortho', 'visibility', value === 'ortho' ? 'visible' : 'none');
+  map.setLayoutProperty('plan', 'visibility', visibleIf(value === 'plan'));
+  map.setLayoutProperty('ortho', 'visibility', visibleIf(value === 'ortho'));
 }
 
-map.on('load', refreshPoints);
+showModeSections();
+map.on('load', () => setRender(state.render));
 
 // --- Points de vue ---
 
@@ -288,6 +351,7 @@ const views: Record<string, () => void> = {
 };
 
 const collapsePanelOnMobile = setupPanel();
+setupVersionLink();
 
 document.querySelectorAll<HTMLButtonElement>('#views button').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -306,35 +370,61 @@ setupToggles({
     renderLegend();
     refreshPoints();
   },
-});
+  density: (v) => setDensity(v as Density),
+}, { render: state.render, basemap: state.basemap, color: state.color, density: state.density });
+
+let densityRequest = 0;
+
+async function setDensity(density: Density) {
+  state.density = density;
+  const request = ++densityRequest;
+  const next = await loadDataset(density);
+  if (request !== densityRequest) return;
+  data = next;
+  renderInfo();
+  renderGroups();
+  renderLegend();
+  refreshPoints();
+}
 
 const groupsEl = document.getElementById('groups')!;
-groupsEl.innerHTML = meta.groups
-  .map(
-    (g) =>
-      `<label class="check"><input type="checkbox" value="${g.id}" checked /> ${g.name}<span class="count">${g.count.toLocaleString('fr-FR')}</span></label>`,
-  )
-  .join('');
+
+function renderGroups() {
+  groupsEl.innerHTML = data.meta.groups
+    .map(
+      (g) =>
+        `<label class="check"><input type="checkbox" value="${g.id}" ${state.visibleGroups.has(g.id) ? 'checked' : ''} /> ${g.name}<span class="count">${g.count.toLocaleString('fr-FR')}</span></label>`,
+    )
+    .join('');
+}
+
 groupsEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.checked) state.visibleGroups.add(input.value);
   else state.visibleGroups.delete(input.value);
+  setUrlParams({ classes: GROUP_IDS.filter((id) => state.visibleGroups.has(id)).join(',') });
   refreshPoints();
 });
 
 const sizeInput = document.getElementById('point-size') as HTMLInputElement;
 const sizeLabel = document.getElementById('size-label')!;
 const updateSizeLabel = () => (sizeLabel.textContent = `(${state.pointSize.toFixed(2)} m)`);
+sizeInput.value = String(state.pointSize);
 sizeInput.addEventListener('input', () => {
   state.pointSize = Number(sizeInput.value);
   updateSizeLabel();
   refreshPoints();
 });
+// Sur `change` seulement : Safari limite le nombre d'appels à history.replaceState.
+sizeInput.addEventListener('change', () => setUrlParams({ size: state.pointSize }));
 updateSizeLabel();
 
-document.getElementById('hillshade')!.addEventListener('change', (e) => {
-  const on = (e.target as HTMLInputElement).checked;
-  map.setLayoutProperty('hillshade', 'visibility', state.render === 'mns' && on ? 'visible' : 'none');
+const hillshadeInput = document.getElementById('hillshade') as HTMLInputElement;
+hillshadeInput.checked = state.hillshade;
+hillshadeInput.addEventListener('change', () => {
+  state.hillshade = hillshadeInput.checked;
+  setUrlParams({ hillshade: state.hillshade });
+  updateHillshade();
 });
 
 // --- Légende ---
@@ -348,7 +438,7 @@ function renderLegend() {
     return;
   }
   if (state.color === 'classe') {
-    const present = new Set(classes);
+    const present = new Set(data.classes);
     legend.innerHTML = Object.entries(CLASS_LABELS)
       .filter(([c]) => present.has(Number(c)))
       .map(
@@ -363,9 +453,14 @@ function renderLegend() {
   legend.innerHTML = `
     <div class="legend-ramp" style="background:linear-gradient(to right, ${stops})"></div>
     <div class="legend-ramp-labels"><span>0 m</span><span>${max / 2} m</span><span>${max}+ m</span></div>
-    <p class="hint">Hauteur au-dessus de ${meta.zref} m (altitude IGN69).</p>`;
+    <p class="hint">Hauteur au-dessus de ${data.meta.zref} m (altitude IGN69).</p>`;
 }
 
-document.getElementById('count')!.textContent = n.toLocaleString('fr-FR');
-document.getElementById('acquisition')!.textContent = `relevé ${meta.source.acquisition.slice(0, 4)}`;
+function renderInfo() {
+  document.getElementById('count')!.textContent = data.n.toLocaleString('fr-FR');
+  document.getElementById('acquisition')!.textContent = `relevé ${data.meta.source.acquisition.slice(0, 4)}`;
+}
+
+renderInfo();
+renderGroups();
 renderLegend();

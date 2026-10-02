@@ -5,7 +5,17 @@ import maplibregl, {
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Feature, FeatureCollection, Polygon } from 'geojson';
-import { dataUrl, ringBounds, setupPanel, setupToggles, wmts } from './common';
+import {
+  dataUrl,
+  ringBounds,
+  setupPanel,
+  setupToggles,
+  setupVersionLink,
+  syncCameraToUrl,
+  urlCamera,
+  urlChoice,
+  wmts,
+} from './common';
 import './style.css';
 
 type HeightProp = 'h_gouttiere' | 'h_faitage';
@@ -44,17 +54,14 @@ const zoneBounds: LngLatBoundsLike = [
 const center: [number, number] = [(minX + maxX) / 2, (minY + maxY) / 2];
 
 const state: { height: HeightProp; color: ColorMode; basemap: Basemap } = {
-  height: 'h_gouttiere',
-  color: 'height',
-  basemap: 'plan',
+  height: urlChoice('height', ['h_gouttiere', 'h_faitage'] as const, 'h_gouttiere'),
+  color: urlChoice('color', ['height', 'usage'] as const, 'height'),
+  basemap: urlChoice('basemap', ['plan', 'ortho'] as const, 'plan'),
 };
 
 const map = new maplibregl.Map({
   container: 'map',
-  center,
-  zoom: 16,
-  pitch: 60,
-  bearing: -20,
+  ...urlCamera({ center, zoom: 16, pitch: 60, bearing: -20 }),
   maxPitch: 85,
   canvasContextAttributes: { antialias: true },
   style: {
@@ -98,8 +105,8 @@ const map = new maplibregl.Map({
       [BUILDINGS]: { type: 'geojson', data: buildings, attribution: '© IGN – BD TOPO®' },
     },
     layers: [
-      { id: 'plan', type: 'raster', source: 'plan' },
-      { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: 'none' } },
+      { id: 'plan', type: 'raster', source: 'plan', layout: { visibility: visibleIf(state.basemap === 'plan') } },
+      { id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: visibleIf(state.basemap === 'ortho') } },
       { id: 'mask', type: 'fill', source: 'mask', paint: { 'fill-color': '#0b1020', 'fill-opacity': 0.35 } },
       {
         id: 'zone-outline',
@@ -125,6 +132,11 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+syncCameraToUrl(map);
+
+function visibleIf(visible: boolean): 'visible' | 'none' {
+  return visible ? 'visible' : 'none';
+}
 
 function heightExpression(): ExpressionSpecification {
   return ['get', state.height];
@@ -175,6 +187,7 @@ const views: Record<string, () => void> = {
 };
 
 const collapsePanelOnMobile = setupPanel();
+setupVersionLink();
 
 document.querySelectorAll<HTMLButtonElement>('#views button').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -187,8 +200,8 @@ document.querySelectorAll<HTMLButtonElement>('#views button').forEach((btn) => {
 
 function setBasemap(value: Basemap) {
   state.basemap = value;
-  map.setLayoutProperty('plan', 'visibility', value === 'plan' ? 'visible' : 'none');
-  map.setLayoutProperty('ortho', 'visibility', value === 'ortho' ? 'visible' : 'none');
+  map.setLayoutProperty('plan', 'visibility', visibleIf(value === 'plan'));
+  map.setLayoutProperty('ortho', 'visibility', visibleIf(value === 'ortho'));
 }
 
 setupToggles({
@@ -201,7 +214,7 @@ setupToggles({
     state.color = v as ColorMode;
     refreshBuildingsPaint();
   },
-});
+}, state);
 
 // --- Légende ---
 

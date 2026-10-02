@@ -1,0 +1,57 @@
+{
+ "count": 5767279,
+ "origin": [
+  6.306911400000001,
+  46.3008594
+ ],
+ "zref": 430.0,
+ "offset": [
+  -365.11054905211984,
+  -486.9424326828762,
+  -1.8100000000000023
+ ],
+ "scale": [
+  0.011143239721280302,
+  0.014860978324241119,
+  0.0006392004272526129
+ ],
+ "layout": [
+  "positions uint16 x3",
+  "rgb uint8 x3",
+  "classification uint8"
+ ],
+ "groups": [
+  {
+   "id": "sol",
+   "name": "Sol et eau",
+   "start": 0,
+   "count": 3808477
+  },
+  {
+   "id": "vegetation",
+   "name": "Végétation",
+   "start": 3808477,
+   "count": 989810
+  },
+  {
+   "id": "bati",
+   "name": "Bâti",
+   "start": 4798287,
+   "count": 769772
+  },
+  {
+   "id": "autres",
+   "name": "Autres (ponts, sursol, non classé)",
+   "start": 5568059,
+   "count": 199220
+  }
+ ],
+ "source": {
+  "dalles": [
+   "https://data.geopf.fr/telechargement/download/LiDARHD-NUALID/NUALHD_1-0__LAZ_LAMB93_QK_2025-06-13/LHD_FXX_0954_6583_PTS_LAMB93_IGN69.copc.laz",
+   "https://data.geopf.fr/telechargement/download/LiDARHD-NUALID/NUALHD_1-0__LAZ_LAMB93_QK_2025-06-13/LHD_FXX_0954_6584_PTS_LAMB93_IGN69.copc.laz"
+  ],
+  "acquisition": "2021-07-10 / 2021-09-05",
+  "classement": "IGN_AUTO_V5"
+ }
+}
