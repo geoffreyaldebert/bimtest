@@ -162,6 +162,87 @@ button.active {
   margin-top: 2px;
 }
 
+.switch-version {
+  margin: 8px 0 0;
+}
+
+.switch-version a {
+  color: #2f5bd3;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.switch-version a:hover {
+  text-decoration: underline;
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.check .count {
+  margin-left: auto;
+  color: #7a8394;
+  font-size: 11px;
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+.hint {
+  margin: 6px 0 0;
+  color: #5b6475;
+  font-size: 12px;
+}
+
+#loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(11, 16, 32, 0.35);
+  z-index: 10;
+}
+
+#loading.done {
+  display: none;
+}
+
+.loading-box {
+  width: 240px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  font-size: 13px;
+}
+
+.progress {
+  height: 6px;
+  margin: 10px 0 6px;
+  background: #e4e9f2;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#progress-bar {
+  width: 0;
+  height: 100%;
+  background: #2f5bd3;
+  transition: width 0.15s;
+}
+
 .credits {
   margin: 14px 0 0;
   font-size: 11px;

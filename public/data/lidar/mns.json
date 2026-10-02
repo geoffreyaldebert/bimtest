@@ -1,0 +1,13 @@
+{
+ "encoding": "terrarium",
+ "minzoom": 15,
+ "maxzoom": 18,
+ "bounds": [
+  6.295166015624987,
+  46.29381556233369,
+  6.317138671875004,
+  46.30899569419858
+ ],
+ "zref": 430.0,
+ "source": "https://data.geopf.fr/wms-r — IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.LAMB93"
+}

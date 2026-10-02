@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Douvaine 3D – LiDAR HD IGN</title>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="loading">
+      <div class="loading-box">
+        <div>Chargement du nuage de points…</div>
+        <div class="progress"><div id="progress-bar"></div></div>
+        <div id="progress-label">0 %</div>
+      </div>
+    </div>
+    <aside id="panel">
+      <header>
+        <h1>Douvaine LiDAR</h1>
+        <button id="panel-toggle" aria-expanded="true" aria-controls="panel-body" title="Replier le menu">
+          <span class="chevron" aria-hidden="true"></span>
+        </button>
+      </header>
+      <div id="panel-body">
+      <p class="subtitle"><span id="count">…</span> points LiDAR HD de l'IGN (<span id="acquisition">…</span>)</p>
+      <p class="switch-version"><a href="./">← Version BD TOPO (volumes)</a></p>
+
+      <section>
+        <h2>Rendu</h2>
+        <div class="toggle" data-group="render">
+          <button data-value="points" class="active">Nuage de points</button>
+          <button data-value="mns">Surface MNS</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Points de vue</h2>
+        <div class="grid" id="views">
+          <button data-view="oiseau">Vue d'oiseau</button>
+          <button data-view="nord">Depuis le Nord</button>
+          <button data-view="sud">Depuis le Sud</button>
+          <button data-view="est">Depuis l'Est</button>
+          <button data-view="ouest">Depuis l'Ouest</button>
+          <button data-view="rasante">Vue rasante</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fond de carte</h2>
+        <div class="toggle" data-group="basemap">
+          <button data-value="plan">Plan IGN</button>
+          <button data-value="ortho" class="active">Orthophoto</button>
+        </div>
+      </section>
+
+      <section data-mode="points">
+        <h2>Couleurs des points</h2>
+        <div class="toggle" data-group="color">
+          <button data-value="reel" class="active">Réelles</button>
+          <button data-value="classe">Classe</button>
+          <button data-value="hauteur">Hauteur</button>
+        </div>
+        <div id="legend"></div>
+      </section>
+
+      <section data-mode="points">
+        <h2>Classes affichées</h2>
+        <div id="groups" class="checklist"></div>
+      </section>
+
+      <section data-mode="points">
+        <h2>Taille des points <span id="size-label"></span></h2>
+        <input id="point-size" type="range" min="0.1" max="1.2" step="0.05" value="0.45" />
+      </section>
+
+      <section data-mode="mns" hidden>
+        <h2>Surface</h2>
+        <label class="check"><input id="hillshade" type="checkbox" /> Ombrage du relief</label>
+        <p class="hint">Modèle numérique de surface LiDAR HD à 50 cm : sol, toits et cimes des arbres, avec le fond de carte drapé dessus.</p>
+      </section>
+
+      <p class="credits">Données © IGN – LiDAR HD, BD ORTHO®, Plan IGN</p>
+      </div>
+    </aside>
+    <script type="module" src="/src/lidar.ts"></script>
+  </body>
+</html>

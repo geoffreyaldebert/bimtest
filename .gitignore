@@ -1,4 +1,7 @@
 node_modules
+.venv
+.cache
+__pycache__
 dist
 .DS_Store
 Sans titre/

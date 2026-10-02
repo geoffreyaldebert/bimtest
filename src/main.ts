@@ -4,7 +4,8 @@ import maplibregl, {
   type MapGeoJSONFeature,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Feature, FeatureCollection, Polygon, Position } from 'geojson';
+import type { Feature, FeatureCollection, Polygon } from 'geojson';
+import { dataUrl, ringBounds, setupPanel, setupToggles, wmts } from './common';
 import './style.css';
 
 type HeightProp = 'h_gouttiere' | 'h_faitage';
@@ -29,28 +30,9 @@ const USAGE_COLORS: Record<string, string> = {
 };
 const USAGE_FALLBACK = '#cccccc';
 
-function wmts(layer: string, format: string): string {
-  return (
-    'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
-    `&LAYER=${layer}&STYLE=normal&TILEMATRIXSET=PM&FORMAT=${format}` +
-    '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'
-  );
-}
-
-function ringBounds(ring: Position[]): [number, number, number, number] {
-  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const [x, y] of ring) {
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
-  }
-  return [minX, minY, maxX, maxY];
-}
-
 const [zone, buildings] = await Promise.all([
-  fetch(`${import.meta.env.BASE_URL}data/zone.geojson`).then((r) => r.json() as Promise<Feature<Polygon>>),
-  fetch(`${import.meta.env.BASE_URL}data/batiments.geojson`).then((r) => r.json() as Promise<FeatureCollection>),
+  fetch(dataUrl('zone.geojson')).then((r) => r.json() as Promise<Feature<Polygon>>),
+  fetch(dataUrl('batiments.geojson')).then((r) => r.json() as Promise<FeatureCollection>),
 ]);
 
 const zoneRing = zone.geometry.coordinates[0];
@@ -192,27 +174,14 @@ const views: Record<string, () => void> = {
   rasante: () => map.flyTo({ center, zoom: 18, pitch: 80, bearing: map.getBearing() + 30, duration: 3000 }),
 };
 
+const collapsePanelOnMobile = setupPanel();
+
 document.querySelectorAll<HTMLButtonElement>('#views button').forEach((btn) => {
   btn.addEventListener('click', () => {
     views[btn.dataset.view!]?.();
-    if (isMobile.matches) setPanelCollapsed(true);
+    collapsePanelOnMobile();
   });
 });
-
-// --- Menu rétractable ---
-
-const panel = document.getElementById('panel')!;
-const panelToggle = document.getElementById('panel-toggle')!;
-const isMobile = window.matchMedia('(max-width: 640px)');
-
-function setPanelCollapsed(collapsed: boolean) {
-  panel.classList.toggle('collapsed', collapsed);
-  panelToggle.setAttribute('aria-expanded', String(!collapsed));
-  panelToggle.title = collapsed ? 'Déplier le menu' : 'Replier le menu';
-}
-
-panelToggle.addEventListener('click', () => setPanelCollapsed(!panel.classList.contains('collapsed')));
-setPanelCollapsed(isMobile.matches);
 
 // --- Toggles ---
 
@@ -222,7 +191,7 @@ function setBasemap(value: Basemap) {
   map.setLayoutProperty('ortho', 'visibility', value === 'ortho' ? 'visible' : 'none');
 }
 
-const toggleHandlers: Record<string, (value: string) => void> = {
+setupToggles({
   basemap: (v) => setBasemap(v as Basemap),
   height: (v) => {
     state.height = v as HeightProp;
@@ -232,16 +201,6 @@ const toggleHandlers: Record<string, (value: string) => void> = {
     state.color = v as ColorMode;
     refreshBuildingsPaint();
   },
-};
-
-document.querySelectorAll<HTMLDivElement>('.toggle').forEach((group) => {
-  const buttons = group.querySelectorAll<HTMLButtonElement>('button');
-  buttons.forEach((btn) =>
-    btn.addEventListener('click', () => {
-      buttons.forEach((b) => b.classList.toggle('active', b === btn));
-      toggleHandlers[group.dataset.group!]?.(btn.dataset.value!);
-    }),
-  );
 });
 
 // --- Légende ---

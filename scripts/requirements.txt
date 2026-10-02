@@ -1,0 +1,7 @@
+laspy[lazrs]>=2.5
+numpy>=1.26
+pyproj>=3.6
+shapely>=2.0
+tifffile>=2024.1
+imagecodecs>=2024.1
+pillow>=10.0
