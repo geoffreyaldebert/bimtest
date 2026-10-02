@@ -82,22 +82,31 @@ const loading = document.getElementById('loading')!;
 const progressBar = document.getElementById('progress-bar')!;
 const progressLabel = document.getElementById('progress-label')!;
 
-async function fetchWithProgress(url: string, expected: number): Promise<ArrayBuffer> {
+/**
+ * `size` est la taille décompressée attendue : GitHub Pages sert les .bin en gzip, et son
+ * Content-Length (taille compressée) ne peut servir ni à dimensionner le tampon ni à la progression.
+ */
+async function fetchWithProgress(url: string, size: number): Promise<ArrayBuffer> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`${url} : ${res.status}`);
-  const total = Number(res.headers.get('Content-Length')) || expected;
-  const out = new Uint8Array(total);
+  let out = new Uint8Array(size);
   const reader = res.body.getReader();
   let received = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
+    if (received + value.length > out.length) {
+      const grown = new Uint8Array(Math.max(out.length * 2, received + value.length));
+      grown.set(out.subarray(0, received));
+      out = grown;
+    }
     out.set(value, received);
     received += value.length;
-    const pct = Math.min(100, Math.round((received / total) * 100));
+    const pct = Math.min(100, Math.round((received / size) * 100));
     progressBar.style.width = `${pct}%`;
     progressLabel.textContent = `${pct} % – ${(received / 1e6).toFixed(1)} Mo`;
   }
+  if (received !== size) throw new Error(`${url} : ${received} octets reçus, ${size} attendus`);
   return out.buffer.slice(0, received);
 }
 
@@ -114,8 +123,15 @@ async function loadDataset(density: Density): Promise<Dataset> {
   progressBar.style.width = '0';
   progressLabel.textContent = '0 %';
   const file = density === 'hd' ? 'points-hd' : 'points';
-  const meta = (await fetch(dataUrl(`lidar/${file}.json`)).then((r) => r.json())) as PointsMeta;
-  const buffer = await fetchWithProgress(dataUrl(`lidar/${file}.bin`), meta.count * 10);
+  let meta: PointsMeta;
+  let buffer: ArrayBuffer;
+  try {
+    meta = (await fetch(dataUrl(`lidar/${file}.json`)).then((r) => r.json())) as PointsMeta;
+    buffer = await fetchWithProgress(dataUrl(`lidar/${file}.bin`), meta.count * 10);
+  } catch (err) {
+    progressLabel.textContent = `Erreur de chargement : ${(err as Error).message}`;
+    throw err;
+  }
 
   const n = meta.count;
   const quantized = new Uint16Array(buffer, 0, n * 3);
